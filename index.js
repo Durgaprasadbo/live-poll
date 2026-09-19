@@ -1,261 +1,255 @@
-export { parseAst, parseAstAsync } from 'rollup/parseAst';
-import { i as isInNodeModules, a as arraify } from './chunks/dep-BK3b2jBa.js';
-export { b as build, g as buildErrorMessage, k as createFilter, v as createLogger, c as createServer, d as defineConfig, h as fetchModule, f as formatPostcssSourceMap, y as isFileLoadingAllowed, x as isFileServingAllowed, l as loadConfigFromFile, z as loadEnv, j as mergeAlias, m as mergeConfig, n as normalizePath, o as optimizeDeps, e as preprocessCSS, p as preview, r as resolveConfig, A as resolveEnvPrefix, q as rollupVersion, w as searchForWorkspaceRoot, u as send, s as sortUserPlugins, t as transformWithEsbuild } from './chunks/dep-BK3b2jBa.js';
-export { VERSION as version } from './constants.js';
-export { version as esbuildVersion } from 'esbuild';
-import { existsSync, readFileSync } from 'node:fs';
-import { ViteRuntime, ESModulesRunner } from 'vite/runtime';
-import 'node:fs/promises';
-import 'node:path';
-import 'node:url';
-import 'node:util';
-import 'node:perf_hooks';
-import 'node:module';
-import 'node:crypto';
-import 'tty';
-import 'path';
-import 'fs';
-import 'node:events';
-import 'node:stream';
-import 'node:string_decoder';
-import 'node:child_process';
-import 'node:http';
-import 'node:https';
-import 'util';
-import 'net';
-import 'events';
-import 'url';
-import 'http';
-import 'stream';
-import 'os';
-import 'child_process';
-import 'node:os';
-import 'node:dns';
-import 'crypto';
-import 'module';
-import 'node:assert';
-import 'node:v8';
-import 'node:worker_threads';
-import 'node:buffer';
-import 'querystring';
-import 'node:readline';
-import 'zlib';
-import 'buffer';
-import 'https';
-import 'tls';
-import 'node:net';
-import 'assert';
-import 'node:zlib';
-
-const CSS_LANGS_RE = (
-  // eslint-disable-next-line regexp/no-unused-capturing-group
-  /\.(css|less|sass|scss|styl|stylus|pcss|postcss|sss)(?:$|\?)/
-);
-const isCSSRequest = (request) => CSS_LANGS_RE.test(request);
-class SplitVendorChunkCache {
-  cache;
-  constructor() {
-    this.cache = /* @__PURE__ */ new Map();
-  }
-  reset() {
-    this.cache = /* @__PURE__ */ new Map();
-  }
+//#region src/utils.ts
+const postfixRE = /[?#].*$/;
+function cleanUrl(url) {
+	return url.replace(postfixRE, "");
 }
-function splitVendorChunk(options = {}) {
-  const cache = options.cache ?? new SplitVendorChunkCache();
-  return (id, { getModuleInfo }) => {
-    if (isInNodeModules(id) && !isCSSRequest(id) && staticImportedByEntry(id, getModuleInfo, cache.cache)) {
-      return "vendor";
-    }
-  };
-}
-function staticImportedByEntry(id, getModuleInfo, cache, importStack = []) {
-  if (cache.has(id)) {
-    return cache.get(id);
-  }
-  if (importStack.includes(id)) {
-    cache.set(id, false);
-    return false;
-  }
-  const mod = getModuleInfo(id);
-  if (!mod) {
-    cache.set(id, false);
-    return false;
-  }
-  if (mod.isEntry) {
-    cache.set(id, true);
-    return true;
-  }
-  const someImporterIs = mod.importers.some(
-    (importer) => staticImportedByEntry(
-      importer,
-      getModuleInfo,
-      cache,
-      importStack.concat(id)
-    )
-  );
-  cache.set(id, someImporterIs);
-  return someImporterIs;
-}
-function splitVendorChunkPlugin() {
-  const caches = [];
-  function createSplitVendorChunk(output, config) {
-    const cache = new SplitVendorChunkCache();
-    caches.push(cache);
-    const build = config.build ?? {};
-    const format = output?.format;
-    if (!build.ssr && !build.lib && format !== "umd" && format !== "iife") {
-      return splitVendorChunk({ cache });
-    }
-  }
-  return {
-    name: "vite:split-vendor-chunk",
-    config(config) {
-      let outputs = config?.build?.rollupOptions?.output;
-      if (outputs) {
-        outputs = arraify(outputs);
-        for (const output of outputs) {
-          const viteManualChunks = createSplitVendorChunk(output, config);
-          if (viteManualChunks) {
-            if (output.manualChunks) {
-              if (typeof output.manualChunks === "function") {
-                const userManualChunks = output.manualChunks;
-                output.manualChunks = (id, api) => {
-                  return userManualChunks(id, api) ?? viteManualChunks(id, api);
-                };
-              } else {
-                console.warn(
-                  "(!) the `splitVendorChunk` plugin doesn't have any effect when using the object form of `build.rollupOptions.output.manualChunks`. Consider using the function form instead."
-                );
-              }
-            } else {
-              output.manualChunks = viteManualChunks;
-            }
-          }
-        }
-      } else {
-        return {
-          build: {
-            rollupOptions: {
-              output: {
-                manualChunks: createSplitVendorChunk({}, config)
-              }
-            }
-          }
-        };
-      }
-    },
-    buildStart() {
-      caches.forEach((cache) => cache.reset());
-    }
-  };
+function extractQueryWithoutFragment(url) {
+	const questionMarkIndex = url.indexOf("?");
+	if (questionMarkIndex === -1) return "";
+	const fragmentIndex = url.indexOf("#", questionMarkIndex);
+	if (fragmentIndex === -1) return url.substring(questionMarkIndex);
+	else return url.substring(questionMarkIndex, fragmentIndex);
 }
 
-class ServerHMRBroadcasterClient {
-  constructor(hmrChannel) {
-    this.hmrChannel = hmrChannel;
-  }
-  send(...args) {
-    let payload;
-    if (typeof args[0] === "string") {
-      payload = {
-        type: "custom",
-        event: args[0],
-        data: args[1]
-      };
-    } else {
-      payload = args[0];
-    }
-    if (payload.type !== "custom") {
-      throw new Error(
-        "Cannot send non-custom events from the client to the server."
-      );
-    }
-    this.hmrChannel.send(payload);
-  }
-}
-class ServerHMRConnector {
-  handlers = [];
-  hmrChannel;
-  hmrClient;
-  connected = false;
-  constructor(server) {
-    const hmrChannel = server.hot?.channels.find(
-      (c) => c.name === "ssr"
-    );
-    if (!hmrChannel) {
-      throw new Error(
-        "Your version of Vite doesn't support HMR during SSR. Please, use Vite 5.1 or higher."
-      );
-    }
-    this.hmrClient = new ServerHMRBroadcasterClient(hmrChannel);
-    hmrChannel.api.outsideEmitter.on("send", (payload) => {
-      this.handlers.forEach((listener) => listener(payload));
-    });
-    this.hmrChannel = hmrChannel;
-  }
-  isReady() {
-    return this.connected;
-  }
-  send(message) {
-    const payload = JSON.parse(message);
-    this.hmrChannel.api.innerEmitter.emit(
-      payload.event,
-      payload.data,
-      this.hmrClient
-    );
-  }
-  onUpdate(handler) {
-    this.handlers.push(handler);
-    handler({ type: "connected" });
-    this.connected = true;
-  }
-}
-
-function createHMROptions(server, options) {
-  if (server.config.server.hmr === false || options.hmr === false) {
-    return false;
-  }
-  const connection = new ServerHMRConnector(server);
-  return {
-    connection,
-    logger: options.hmr?.logger
-  };
-}
-const prepareStackTrace = {
-  retrieveFile(id) {
-    if (existsSync(id)) {
-      return readFileSync(id, "utf-8");
-    }
-  }
+//#endregion
+//#region src/composable-filters.ts
+var And = class {
+	kind;
+	args;
+	constructor(...args) {
+		if (args.length === 0) throw new Error("`And` expects at least one operand");
+		this.args = args;
+		this.kind = "and";
+	}
 };
-function resolveSourceMapOptions(options) {
-  if (options.sourcemapInterceptor != null) {
-    if (options.sourcemapInterceptor === "prepareStackTrace") {
-      return prepareStackTrace;
-    }
-    if (typeof options.sourcemapInterceptor === "object") {
-      return { ...prepareStackTrace, ...options.sourcemapInterceptor };
-    }
-    return options.sourcemapInterceptor;
-  }
-  if (typeof process !== "undefined" && "setSourceMapsEnabled" in process) {
-    return "node";
-  }
-  return prepareStackTrace;
+var Or = class {
+	kind;
+	args;
+	constructor(...args) {
+		if (args.length === 0) throw new Error("`Or` expects at least one operand");
+		this.args = args;
+		this.kind = "or";
+	}
+};
+var Not = class {
+	kind;
+	expr;
+	constructor(expr) {
+		this.expr = expr;
+		this.kind = "not";
+	}
+};
+var Id = class {
+	kind;
+	pattern;
+	params;
+	constructor(pattern, params) {
+		this.pattern = pattern;
+		this.kind = "id";
+		this.params = params ?? { cleanUrl: false };
+	}
+};
+var ModuleType = class {
+	kind;
+	pattern;
+	constructor(pattern) {
+		this.pattern = pattern;
+		this.kind = "moduleType";
+	}
+};
+var Code = class {
+	kind;
+	pattern;
+	constructor(expr) {
+		this.pattern = expr;
+		this.kind = "code";
+	}
+};
+var Query = class {
+	kind;
+	key;
+	pattern;
+	constructor(key, pattern) {
+		this.pattern = pattern;
+		this.key = key;
+		this.kind = "query";
+	}
+};
+var Include = class {
+	kind;
+	expr;
+	constructor(expr) {
+		this.expr = expr;
+		this.kind = "include";
+	}
+};
+var Exclude = class {
+	kind;
+	expr;
+	constructor(expr) {
+		this.expr = expr;
+		this.kind = "exclude";
+	}
+};
+function and(...args) {
+	return new And(...args);
 }
-async function createViteRuntime(server, options = {}) {
-  const hmr = createHMROptions(server, options);
-  return new ViteRuntime(
-    {
-      ...options,
-      root: server.config.root,
-      fetchModule: server.ssrFetchModule,
-      hmr,
-      sourcemapInterceptor: resolveSourceMapOptions(options)
-    },
-    options.runner || new ESModulesRunner()
-  );
+function or(...args) {
+	return new Or(...args);
+}
+function not(expr) {
+	return new Not(expr);
+}
+function id(pattern, params) {
+	return new Id(pattern, params);
+}
+function moduleType(pattern) {
+	return new ModuleType(pattern);
+}
+function code(pattern) {
+	return new Code(pattern);
+}
+function query(key, pattern) {
+	return new Query(key, pattern);
+}
+function include(expr) {
+	return new Include(expr);
+}
+function exclude(expr) {
+	return new Exclude(expr);
+}
+/**
+* convert a queryObject to FilterExpression like
+* ```js
+*   and(query(k1, v1), query(k2, v2))
+* ```
+* @param queryFilterObject The query filter object needs to be matched.
+* @returns a `And` FilterExpression
+*/
+function queries(queryFilter) {
+	let arr = Object.entries(queryFilter).map(([key, value]) => {
+		return new Query(key, value);
+	});
+	return and(...arr);
+}
+function interpreter(exprs, code$1, id$1, moduleType$1) {
+	let arr = [];
+	if (Array.isArray(exprs)) arr = exprs;
+	else arr = [exprs];
+	return interpreterImpl(arr, code$1, id$1, moduleType$1);
+}
+function interpreterImpl(expr, code$1, id$1, moduleType$1, ctx = {}) {
+	let hasInclude = false;
+	for (const e of expr) switch (e.kind) {
+		case "include": {
+			hasInclude = true;
+			if (exprInterpreter(e.expr, code$1, id$1, moduleType$1, ctx)) return true;
+			break;
+		}
+		case "exclude": {
+			if (exprInterpreter(e.expr, code$1, id$1, moduleType$1)) return false;
+			break;
+		}
+	}
+	return !hasInclude;
+}
+function exprInterpreter(expr, code$1, id$1, moduleType$1, ctx = {}) {
+	switch (expr.kind) {
+		case "and": return expr.args.every((e) => exprInterpreter(e, code$1, id$1, moduleType$1, ctx));
+		case "or": return expr.args.some((e) => exprInterpreter(e, code$1, id$1, moduleType$1, ctx));
+		case "not": return !exprInterpreter(expr.expr, code$1, id$1, moduleType$1, ctx);
+		case "id": {
+			if (id$1 === void 0) throw new Error("`id` is required for `id` expression");
+			if (expr.params.cleanUrl) id$1 = cleanUrl(id$1);
+			return typeof expr.pattern === "string" ? id$1 === expr.pattern : expr.pattern.test(id$1);
+		}
+		case "moduleType": {
+			if (moduleType$1 === void 0) throw new Error("`moduleType` is required for `moduleType` expression");
+			return moduleType$1 === expr.pattern;
+		}
+		case "code": {
+			if (code$1 === void 0) throw new Error("`code` is required for `code` expression");
+			return typeof expr.pattern === "string" ? code$1.includes(expr.pattern) : expr.pattern.test(code$1);
+		}
+		case "query": {
+			if (id$1 === void 0) throw new Error("`id` is required for `Query` expression");
+			if (!ctx.urlSearchParamsCache) {
+				let queryString = extractQueryWithoutFragment(id$1);
+				ctx.urlSearchParamsCache = new URLSearchParams(queryString);
+			}
+			let urlParams = ctx.urlSearchParamsCache;
+			if (typeof expr.pattern === "boolean") if (expr.pattern) return urlParams.has(expr.key);
+			else return !urlParams.has(expr.key);
+			else if (typeof expr.pattern === "string") return urlParams.get(expr.key) === expr.pattern;
+			else return expr.pattern.test(urlParams.get(expr.key) ?? "");
+		}
+		default: throw new Error(`Expression ${JSON.stringify(expr)} is not expected.`);
+	}
 }
 
-export { ServerHMRConnector, createViteRuntime, isCSSRequest, splitVendorChunk, splitVendorChunkPlugin };
+//#endregion
+//#region src/simple-filters.ts
+/**
+* Constructs a RegExp that matches the exact string specified.
+*
+* This is useful for plugin hook filters.
+*
+* @param str the string to match.
+* @param flags flags for the RegExp.
+*
+* @example
+* ```ts
+* import { exactRegex } from '@rolldown/pluginutils';
+* const plugin = {
+*   name: 'plugin',
+*   resolveId: {
+*     filter: { id: exactRegex('foo') },
+*     handler(id) {} // will only be called for `foo`
+*   }
+* }
+* ```
+*/
+function exactRegex(str, flags) {
+	return new RegExp(`^${escapeRegex(str)}$`, flags);
+}
+/**
+* Constructs a RegExp that matches a value that has the specified prefix.
+*
+* This is useful for plugin hook filters.
+*
+* @param str the string to match.
+* @param flags flags for the RegExp.
+*
+* @example
+* ```ts
+* import { prefixRegex } from '@rolldown/pluginutils';
+* const plugin = {
+*   name: 'plugin',
+*   resolveId: {
+*     filter: { id: prefixRegex('foo') },
+*     handler(id) {} // will only be called for IDs starting with `foo`
+*   }
+* }
+* ```
+*/
+function prefixRegex(str, flags) {
+	return new RegExp(`^${escapeRegex(str)}`, flags);
+}
+const escapeRegexRE = /[-/\\^$*+?.()|[\]{}]/g;
+function escapeRegex(str) {
+	return str.replace(escapeRegexRE, "\\$&");
+}
+function makeIdFiltersToMatchWithQuery(input) {
+	if (!Array.isArray(input)) return makeIdFilterToMatchWithQuery(input);
+	return input.map((i) => makeIdFilterToMatchWithQuery(i));
+}
+function makeIdFilterToMatchWithQuery(input) {
+	if (typeof input === "string") return `${input}{?*,}`;
+	return makeRegexIdFilterToMatchWithQuery(input);
+}
+function makeRegexIdFilterToMatchWithQuery(input) {
+	return new RegExp(input.source.replace(/(?<!\\)\$/g, "(?:\\?.*)?$"), input.flags);
+}
+
+//#endregion
+export { and, code, exactRegex, exclude, exprInterpreter, id, include, interpreter, interpreterImpl, makeIdFiltersToMatchWithQuery, moduleType, not, or, prefixRegex, queries, query };
