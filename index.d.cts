@@ -1,157 +1,67 @@
-//#region src/composable-filters.d.ts
-type StringOrRegExp = string | RegExp;
-type PluginModuleType = "js" | "jsx" | "ts" | "tsx" | "json" | "text" | "base64" | "dataurl" | "binary" | "empty" | (string & {});
-type FilterExpressionKind = FilterExpression["kind"];
-type FilterExpression = And | Or | Not | Id | ModuleType | Code | Query;
-type TopLevelFilterExpression = Include | Exclude;
-declare class And {
-  kind: "and";
-  args: FilterExpression[];
-  constructor(...args: FilterExpression[]);
+import { ParserOptions, TransformOptions } from "@babel/core";
+import { Plugin, ResolvedConfig } from "vite";
+
+//#region src/index.d.ts
+interface Options {
+  include?: string | RegExp | Array<string | RegExp>;
+  exclude?: string | RegExp | Array<string | RegExp>;
+  /**
+   * Control where the JSX factory is imported from.
+   * https://esbuild.github.io/api/#jsx-import-source
+   * @default 'react'
+   */
+  jsxImportSource?: string;
+  /**
+   * Note: Skipping React import with classic runtime is not supported from v4
+   * @default "automatic"
+   */
+  jsxRuntime?: 'classic' | 'automatic';
+  /**
+   * Babel configuration applied in both dev and prod.
+   */
+  babel?: BabelOptions | ((id: string, options: {
+    ssr?: boolean;
+  }) => BabelOptions);
+  /**
+   * React Fast Refresh runtime URL prefix.
+   * Useful in a module federation context to enable HMR by specifying
+   * the host application URL in the Vite config of a remote application.
+   * @example
+   * reactRefreshHost: 'http://localhost:3000'
+   */
+  reactRefreshHost?: string;
+  /**
+   * If set, disables the recommendation to use `@vitejs/plugin-react-oxc`
+   */
+  disableOxcRecommendation?: boolean;
 }
-declare class Or {
-  kind: "or";
-  args: FilterExpression[];
-  constructor(...args: FilterExpression[]);
-}
-declare class Not {
-  kind: "not";
-  expr: FilterExpression;
-  constructor(expr: FilterExpression);
-}
-interface QueryFilterObject {
-  [key: string]: StringOrRegExp | boolean;
-}
-interface IdParams {
-  cleanUrl?: boolean;
-}
-declare class Id {
-  kind: "id";
-  pattern: StringOrRegExp;
-  params: IdParams;
-  constructor(pattern: StringOrRegExp, params?: IdParams);
-}
-declare class ModuleType {
-  kind: "moduleType";
-  pattern: PluginModuleType;
-  constructor(pattern: PluginModuleType);
-}
-declare class Code {
-  kind: "code";
-  pattern: StringOrRegExp;
-  constructor(expr: StringOrRegExp);
-}
-declare class Query {
-  kind: "query";
-  key: string;
-  pattern: StringOrRegExp | boolean;
-  constructor(key: string, pattern: StringOrRegExp | boolean);
-}
-declare class Include {
-  kind: "include";
-  expr: FilterExpression;
-  constructor(expr: FilterExpression);
-}
-declare class Exclude {
-  kind: "exclude";
-  expr: FilterExpression;
-  constructor(expr: FilterExpression);
-}
-declare function and(...args: FilterExpression[]): And;
-declare function or(...args: FilterExpression[]): Or;
-declare function not(expr: FilterExpression): Not;
-declare function id(pattern: StringOrRegExp, params?: IdParams): Id;
-declare function moduleType(pattern: PluginModuleType): ModuleType;
-declare function code(pattern: StringOrRegExp): Code;
-declare function query(key: string, pattern: StringOrRegExp | boolean): Query;
-declare function include(expr: FilterExpression): Include;
-declare function exclude(expr: FilterExpression): Exclude;
+type BabelOptions = Omit<TransformOptions, 'ast' | 'filename' | 'root' | 'sourceFileName' | 'sourceMaps' | 'inputSourceMap'>;
 /**
-* convert a queryObject to FilterExpression like
-* ```js
-*   and(query(k1, v1), query(k2, v2))
-* ```
-* @param queryFilterObject The query filter object needs to be matched.
-* @returns a `And` FilterExpression
-*/
-declare function queries(queryFilter: QueryFilterObject): And;
-declare function interpreter(exprs: TopLevelFilterExpression | TopLevelFilterExpression[], code?: string, id?: string, moduleType?: PluginModuleType): boolean;
-interface InterpreterCtx {
-  urlSearchParamsCache?: URLSearchParams;
+ * The object type used by the `options` passed to plugins with
+ * an `api.reactBabel` method.
+ */
+interface ReactBabelOptions extends BabelOptions {
+  plugins: Extract<BabelOptions['plugins'], any[]>;
+  presets: Extract<BabelOptions['presets'], any[]>;
+  overrides: Extract<BabelOptions['overrides'], any[]>;
+  parserOpts: ParserOptions & {
+    plugins: Extract<ParserOptions['plugins'], any[]>;
+  };
 }
-declare function interpreterImpl(expr: TopLevelFilterExpression[], code?: string, id?: string, moduleType?: PluginModuleType, ctx?: InterpreterCtx): boolean;
-declare function exprInterpreter(expr: FilterExpression, code?: string, id?: string, moduleType?: PluginModuleType, ctx?: InterpreterCtx): boolean;
+type ReactBabelHook = (babelConfig: ReactBabelOptions, context: ReactBabelHookContext, config: ResolvedConfig) => void;
+type ReactBabelHookContext = {
+  ssr: boolean;
+  id: string;
+};
+type ViteReactPluginApi = {
+  /**
+   * Manipulate the Babel options of `@vitejs/plugin-react`
+   */
+  reactBabel?: ReactBabelHook;
+};
+declare function viteReact(opts?: Options): Plugin[];
+declare namespace viteReact {
+  var preambleCode: string;
+}
 //#endregion
-//#region src/simple-filters.d.ts
-/**
-* Constructs a RegExp that matches the exact string specified.
-*
-* This is useful for plugin hook filters.
-*
-* @param str the string to match.
-* @param flags flags for the RegExp.
-*
-* @example
-* ```ts
-* import { exactRegex } from '@rolldown/pluginutils';
-* const plugin = {
-*   name: 'plugin',
-*   resolveId: {
-*     filter: { id: exactRegex('foo') },
-*     handler(id) {} // will only be called for `foo`
-*   }
-* }
-* ```
-*/
-declare function exactRegex(str: string, flags?: string): RegExp;
-/**
-* Constructs a RegExp that matches a value that has the specified prefix.
-*
-* This is useful for plugin hook filters.
-*
-* @param str the string to match.
-* @param flags flags for the RegExp.
-*
-* @example
-* ```ts
-* import { prefixRegex } from '@rolldown/pluginutils';
-* const plugin = {
-*   name: 'plugin',
-*   resolveId: {
-*     filter: { id: prefixRegex('foo') },
-*     handler(id) {} // will only be called for IDs starting with `foo`
-*   }
-* }
-* ```
-*/
-declare function prefixRegex(str: string, flags?: string): RegExp;
-type WidenString<T> = T extends string ? string : T;
-/**
-* Converts a id filter to match with an id with a query.
-*
-* @param input the id filters to convert.
-*
-* @example
-* ```ts
-* import { makeIdFiltersToMatchWithQuery } from '@rolldown/pluginutils';
-* const plugin = {
-*   name: 'plugin',
-*   transform: {
-*     filter: { id: makeIdFiltersToMatchWithQuery(['**' + '/*.js', /\.ts$/]) },
-*     // The handler will be called for IDs like:
-*     // - foo.js
-*     // - foo.js?foo
-*     // - foo.txt?foo.js
-*     // - foo.ts
-*     // - foo.ts?foo
-*     // - foo.txt?foo.ts
-*     handler(code, id) {}
-*   }
-* }
-* ```
-*/
-declare function makeIdFiltersToMatchWithQuery<T extends string | RegExp>(input: T): WidenString<T>;
-declare function makeIdFiltersToMatchWithQuery<T extends string | RegExp>(input: readonly T[]): WidenString<T>[];
-declare function makeIdFiltersToMatchWithQuery(input: string | RegExp | readonly (string | RegExp)[]): string | RegExp | (string | RegExp)[];
-//#endregion
-export { FilterExpression, FilterExpressionKind, QueryFilterObject, TopLevelFilterExpression, and, code, exactRegex, exclude, exprInterpreter, id, include, interpreter, interpreterImpl, makeIdFiltersToMatchWithQuery, moduleType, not, or, prefixRegex, queries, query };
+export { BabelOptions, Options, ReactBabelOptions, ViteReactPluginApi, viteReact as default };
